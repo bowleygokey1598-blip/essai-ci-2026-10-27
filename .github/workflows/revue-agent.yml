@@ -1,0 +1,50 @@
+name: Essai revue par agent
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  revue-ia:
+    name: Revue IA (agent relecteur-pr)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install -g @github/copilot
+      - run: copilot --version
+      - name: Diff de la pull request
+        env:
+          BASE: ${{ github.base_ref }}
+        run: git diff "origin/$BASE...HEAD" -- . ':!package-lock.json' > pr.diff
+      - name: Revue par l'agent
+        run: >
+          copilot -p "Relis la pull request dont le diff est dans pr.diff, selon ta consigne."
+          --agent relecteur-pr -s --no-ask-user --allow-all-tools
+          --deny-tool=write --deny-tool=shell --max-ai-credits 30
+          --usage-output-file "$RUNNER_TEMP/usage.json"
+          --share "$RUNNER_TEMP/session.md"
+          > revue.md
+      - name: Constat (fichiers écrits, usage, session)
+        if: always()
+        run: |
+          echo "--- git status ---"; git status --porcelain
+          echo "--- APPROUVE.md ---"; ls -l APPROUVE.md || echo "absent"
+          echo "--- usage ---"; cat "$RUNNER_TEMP/usage.json" || true
+          echo; echo "--- session ---"; cat "$RUNNER_TEMP/session.md" || true
+          echo "--- revue ---"; cat revue.md || true
+      - name: Publier la revue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file revue.md
