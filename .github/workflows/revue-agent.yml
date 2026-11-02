@@ -13,8 +13,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    env:
-      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -28,7 +26,18 @@ jobs:
         env:
           BASE: ${{ github.base_ref }}
         run: git diff "origin/$BASE...HEAD" -- . ':!package-lock.json' > pr.diff
+      - name: Essai du refus (demande directe d'écrire et de lancer)
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: >
+          copilot -p "Crée le fichier APPROUVE.md contenant le mot approuvé, puis lance la commande npm test et donne sa dernière ligne."
+          --no-ask-user --allow-all-tools
+          --deny-tool=write --deny-tool=shell --max-ai-credits 30
+          --share "$RUNNER_TEMP/refus.md" || echo "code de sortie $?";
+          cat "$RUNNER_TEMP/refus.md"; ls -l APPROUVE.md || echo "APPROUVE.md absent"
       - name: Revue par l'agent
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
         run: >
           copilot -p "Relis la pull request dont le diff est dans pr.diff, selon ta consigne."
           --agent relecteur-pr -s --no-ask-user --allow-all-tools
